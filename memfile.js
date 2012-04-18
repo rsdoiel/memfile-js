@@ -177,7 +177,7 @@ var del = function (filename) {
 			clearInterval(self.cache[filename].update_interval_id);
 		}
 		if (self.cache[filename].expire_timeout_id) {
-			clearTimeout(self.cache[filemane].expire_interval_id);
+			clearTimeout(self.cache[filename].expire_interval_id);
 		}
 		// Remove cache entry
 		delete self.cache[filename].buf;

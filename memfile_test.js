@@ -70,7 +70,10 @@ assert.strictEqual(memfile.del("README.md"), true, "del() should return true");
 assert.strictEqual(memfile.get("README.md"), false, "Should get false after delete.");
 
 // Test non-blocking set()
-memfile.set("README.md",{mime_type: "text/plain", expires_in: 5000}, function (err, item) {
+var t1 = Date.now(), t2;
+memfile.set("README.md",{mime_type: "text/plain", expire_in: 100}, function (err, item) {
+	t2 = Date.now();
+	console.log("File loaded in ", t2 - t1, "milliseconds");
 	assert.ok(! err, "Shouldn't get an error on set README.md");
 	Object.keys(expected).forEach(function (ky) {
 		assert.equal(expected[ky], memfile.cache["README.md"][ky], 
@@ -80,13 +83,25 @@ memfile.set("README.md",{mime_type: "text/plain", expires_in: 5000}, function (e
 		assert.equal(expected[ky], item[ky], 
 			"expected " + expected[ky] + "; found " + item[ky]);
 	});
+	
+	assert.equal(typeof memfile.cache["README.md"].onPrune, "function", "Should have onPrune() attached."); 
+	t1 = Date.now();
+
+	console.log("Checking expire_in (110 milliseconds)");
+	setTimeout(function () {
+		t2 = Date.now();
+		assert.ok((t2 - t1) >= 110, "Should be 110 milliseconds later: " + (t2 - t1));
+		console.log("File expire_in ", t2 - t1, "milliseconds");
+		assert.strictEqual(memfile.get("README.md"), false, "README.md still in memory after 100 milliseconds. " + util.inspect(memfile.cache));
+		console.log("Checking expire_in success");
+		// Next check update_in ...
+	}, 110);
 });
 
-console.log("Checking expire_in (10 secs)");
-setTimeout(function () {
-	assert.strictEqual(memfile.get("README.md"), false, "README.md still in memory after 10 seconds. " + util.inspect(memfile.cache));
-	console.log("Checking expire_in success");
-}, 10000);
+assert.ok(false, "Testing onUpdate(), update_in not implemented");
+assert.ok(false, "Testing onChange(), on_change_interval not implemented.");
+
+
 
 
 
