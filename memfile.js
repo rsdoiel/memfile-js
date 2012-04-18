@@ -22,7 +22,6 @@ var self = {
 		on_change_interval_id: false,
 		// Sets up a refresh using setInterval()
 		update_in: false,
-		update_persist_if_missing: false,
 		update_interval_id: false,
 		// Sets up a prune using setTimeout()
 		expire_in: false,
@@ -62,8 +61,10 @@ var onUpdate = function (filename, interval) {
 
 
 var onPrune = function (filename, timeout) {
+	var timeout_id = self.cache[filename].expire_timeout_id;
 	self.cache[filename].expire_timeout_id = setTimeout(function () {
 		del(filename);
+		clearTimeout(timeout_id);
 	}, timeout);
 };
 
@@ -81,30 +82,28 @@ var setup = function (defaults) {
 
 
 var setupItem = function (filename, options, buf) {
-	var ky_list, i;
-
 	// Delete any existing copy of item
 	del(filename);
 
-	self.cache[filename] = { mime_type: options.mime_type };		
-	if (options.mime_type.toLowerCase().indexOf('text/') === 0) {
+	self.cache[filename] = {};
+	// Recreate based on the defaults
+	Object.keys(self.options).forEach(function (ky) {
+		self.cache[filename][ky] = self.options[ky];
+	});
+
+	// Merge new options
+	if (options !== undefined) {
+		Object.keys(options).forEach(function (ky) {
+			self.cache[filename][ky] = options[ky];
+		});
+	}
+
+	if (self.cache[filename].mime_type.toLowerCase().indexOf('text/') === 0) {
 		self.cache[filename].buf = buf.toString(); 
 	} else {
 		self.cache[filename].buf = buf;
 	}
 
-	// Merge options with defaults options
-	if (options === undefined || options === null) {
-		options = self.options;
-	} else {
-		ky_list = Object.keys(self.options);
-		for (i = 0; i < ky_list.length; i += 1) {
-			if (options[ky_list[i]] === undefined) {
-				options[ky_list[i]] = self.options[ky_list[i]];
-			}
-		}
-	}
-	self.cache[filename].options = options;
 		
 	if (options.update_on_change === true) {
 		self.cache[filename].onChange = onChange;
@@ -187,11 +186,18 @@ var del = function (filename) {
 	return (self.cache[filename] === undefined);
 };
 
+// Configuration setting
 exports.setup = setup;
+exports.options = self.options;
+exports.cache = self.cache;
+
+// Internal utility methods
 exports.onChange = onChange;
 exports.onUpdate = onUpdate;
 exports.onPrune = onPrune;
 exports.setupItem = setupItem;
+
+// Primary public API
 exports.setSync = setSync;
 exports.set = set;
 exports.get = get;

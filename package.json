@@ -1,0 +1,31 @@
+{
+	"name" : "memfile",
+	"version" : "0.0.1",
+	"description" : "A simplistic in-memory file cache. Not suitable of a huge number of files. It doesn't feature logging which a production implementation requirement.",
+	"main" : "./memfile.js",
+	"repository" : {
+		"type" : "git", 
+		"url" : "https://github.com/rsdoiel/memfile-js.git"
+	},
+	"author" : {
+		"name" : "R. S. Doiel", 
+		"email" : "rsdoiel@gmail.com", 
+		"url" : "https://github.com/rsdoiel"
+	},
+	"maintainers" : [{
+		"name" : "R. S. Doiel", 
+		"url" : "https://github.com/rsdoiel"
+	}],
+	"engines" : {
+		"node" : ">= 0.6",
+		"npm" : ">= 1"
+	},
+	"dependencies" : {
+	},
+	"scripts" : {
+		"test" : "node memfile_test.js"
+	},
+	"bugs": {
+		"url": "http://github.com/rsdoiel/memfile-js/issues"
+   	}
+}
