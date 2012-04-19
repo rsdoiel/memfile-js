@@ -160,7 +160,7 @@ setTimeout(function () {
 	var ky_list = Object.keys(memfile.cache);
 	//console.log("DEBUG", memfile);
 
-	memfile.shutdown();
+	memfile.close();
 	console.log("Success!");
 }, 15000);
 

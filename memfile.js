@@ -207,7 +207,7 @@ var del = function (filename) {
 	return (self.cache[filename] === undefined);
 };
 
-var shutdown = function () {
+var close = function () {
 	Object.keys(self.cache).forEach(function (filename) {
 		del(filename);
 	});
@@ -229,4 +229,4 @@ exports.setSync = setSync;
 exports.set = set;
 exports.get = get;
 exports.del = del;
-exports.shutdown = shutdown;
+exports.close = close;
