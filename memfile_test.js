@@ -17,7 +17,7 @@ var assert = require('assert'),
 
 console.log("Starting [memfile_test.js] ...");
 
-var expected = {}, results = null;
+var expected = {}, results = null, src;
 
 Object.keys(memfile.options).forEach(function (ky) {
 	expected[ky] = memfile.options[ky];
@@ -38,8 +38,8 @@ Object.keys(expected).forEach(function (ky) {
 });
 
 
-memfile.setup({mime_type: "text/plain", on_change_interval: 100});
-assert.equal(memfile.options.on_change_interval, 100, "Should have updated setup" + util.inspect(memfile.options));
+memfile.setup({mime_type: "text/plain", on_change_in: 100});
+assert.equal(memfile.options.on_change_in, 100, "Should have updated setup" + util.inspect(memfile.options));
 
 assert.equal(Object.keys(memfile.cache).length, 0, "Should have zero objects in cache.");
 
@@ -70,10 +70,8 @@ assert.strictEqual(memfile.del("README.md"), true, "del() should return true");
 assert.strictEqual(memfile.get("README.md"), false, "Should get false after delete.");
 
 // Test non-blocking set()
-var t1 = Date.now(), t2;
-memfile.set("README.md",{mime_type: "text/plain", expire_in: 100}, function (err, item) {
-	t2 = Date.now();
-	console.log("File loaded in ", t2 - t1, "milliseconds");
+console.log("Checking set()");
+memfile.set("README.md",{mime_type: "text/plain", expire_in: 50}, function (err, item) {
 	assert.ok(! err, "Shouldn't get an error on set README.md");
 	Object.keys(expected).forEach(function (ky) {
 		assert.equal(expected[ky], memfile.cache["README.md"][ky], 
@@ -85,22 +83,86 @@ memfile.set("README.md",{mime_type: "text/plain", expire_in: 100}, function (err
 	});
 	
 	assert.equal(typeof memfile.cache["README.md"].onPrune, "function", "Should have onPrune() attached."); 
-	t1 = Date.now();
 
-	console.log("Checking expire_in (110 milliseconds)");
+	console.log("Checking onPrune(), expire_in");
 	setTimeout(function () {
-		t2 = Date.now();
-		assert.ok((t2 - t1) >= 110, "Should be 110 milliseconds later: " + (t2 - t1));
-		console.log("File expire_in ", t2 - t1, "milliseconds");
-		assert.strictEqual(memfile.get("README.md"), false, "README.md still in memory after 100 milliseconds. " + util.inspect(memfile.cache));
-		console.log("Checking expire_in success");
+		assert.strictEqual(memfile.get("README.md"), false, "README.md still in memory after 75 milliseconds. " + util.inspect(memfile.cache));
 		// Next check update_in ...
-	}, 110);
+		console.log("Checking onPrune(), expire_in, success");
+	}, 75);
+	console.log("Checking set(), success");
 });
 
-assert.ok(false, "Testing onUpdate(), update_in not implemented");
-assert.ok(false, "Testing onChange(), on_change_interval not implemented.");
+console.log("Setting up for onUpdate(), update tests.");
+try {
+	results = fs.statSync("test-data");
+} catch (err) {
+	results = false;
+}
+if (results === false) {
+	fs.mkdirSync("test-data", 0770);
+}
+src = "First Line";
+fs.writeFileSync("test-data/test-1.txt", src);
+fs.writeFileSync("test-data/test-2.txt", src);
 
+console.log("Checking onUpdate(), update_in");
+memfile.set("test-data/test-1.txt", {mime_type: "text/plain", update_in: 10}, function (err, item) {
+		var update_cnt = 0, check_interval_id, modified = item.modified;
+
+
+		assert.equal(item.update_in, 10, "Should by update_in: 10" + util.inspect(item));
+		// Wait for next update and check status
+		console.log("Checking stat 1st access");
+		setTimeout(function () {
+			assert.ok(memfile.cache["test-data/test-1.txt"].modified > modified, "(1st) Should have been modified since " + modified);
+			console.log("Checking stat 1st access, success");
+			update_cnt += 1;
+			modified = memfile.cache["test-data/test-1.txt"].modified;
+		}, 20);
+
+		console.log("Checking stat for 2nd access");
+		setTimeout(function () {
+			assert.ok(memfile.cache["test-data/test-1.txt"].modified > modified, "(2nd) Should have been modified since " + modified + "," + memfile.cache["test-data/test-1.txt"].modified);
+			console.log("Checking stat 2nd access, success");
+			update_cnt += 1;
+		}, 50);
+		
+		setTimeout(function () {
+			assert.equal(2, update_cnt, "Failed from complete checking onUpdate(), update_in");
+			console.log("Checking onUpdate(), update_in, success");
+		}, 80);
+});
+
+
+console.log("Setting up for onChange(), on_change_in");
+memfile.set("test-data/test-2.txt", {mime_type: "text/plain", on_change_in: 25}, function (err, item) {
+	assert.ok(! err, "Shouldn't get an error updating test-data/test-2.txt: " + err);
+	results = item.modified;
+});
+
+console.log("Checking onChange(), on_change_in");
+src += "\nSecond Line";
+console.log("\tchanging test-data/test-2.txt: ", Date.now());
+fs.writeFileSync("test-data/test-2.txt", src);
+console.log("\tchange test-data/test-2.txt, completed: ", Date.now());
+
+setTimeout(function () {
+	var item = memfile.get("test-data/test-2.txt");
+
+	console.log("\tchecking for change in cache: ", Date.now());		
+	assert.strictEqual(item.buf, src, "item != src: " + item.buf + " <--> " + src);
+	console.log("Checking onChange(), on_change_in, success");
+}, 1000);
+
+
+setTimeout(function () {
+	var ky_list = Object.keys(memfile.cache);
+	//console.log("DEBUG", memfile);
+
+	memfile.shutdown();
+	console.log("Success!");
+}, 15000);
 
 
 

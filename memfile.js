@@ -17,9 +17,8 @@ var self = {
 	options: {
 		mime_type: 'application/octet-stream',
 		// Sets up a file Watch if true
-		on_change: false,
-		on_change_interval: 500,
-		on_change_interval_id: false,
+		on_change_in: false,
+		on_change_watcher: false,
 		// Sets up a refresh using setInterval()
 		update_in: false,
 		update_interval_id: false,
@@ -31,40 +30,64 @@ var self = {
 };
 
 
-var onChange = function (filename, interval) {
-	// fs.watch() is really what you want here but is listed
-	// as unstable in 0.6.15 docs so I've cooked up an overly 
-	// simplistic version of my own.
-	self.cache[filename].on_change_interval_id = setInterval(function () {
-		fs.stat(filename, function (err, stat) {
-			var last_time = (Date.now() - interval), options = {};
-			// Figure the time of last check
+var onChange = function (filename) {
+	self.cache[filename].on_change_watcher = fs.watch(filename, 
+		{ persistent: true }, 
+	function (event, filename) {
+		console.log("DEBUG watcher", event, filename);
+		/*
+		fs.readFile(filename, function (err, buf) {
 			if (err) {
-				// File is missing, prune
+				console.error("DEBUG onChange(), err", err);
 				del(filename);
+				return;
 			}
-			// Check if the file has changed or been modified
-			if (stat.ctime.getTime() >= last_time || 
-				stat.mtime.getTime() >= last_time) {
-				set(filename, self.cache[filename].options);
+			// We have to make sure we handle a delete in middle of 
+			// an onChange().
+			if (self.cache[filename]) {
+				console.log("DEBUG onChange(), updating content:", self.cache[filename]);
+				self.cache[filename].modified = Date.now();
+				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
+					self.cache[filename].buf = buf.toString(); 
+				} else {
+					self.cache[filename].buf = buf;
+				}
+				self.cache[filename].size = buf.length; 
+				size = buf.length;
+				last_checked = Date.now();
+			}
+		});
+		*/
+	});
+};
+
+
+var onUpdate = function (filename, interval) {
+	self.cache[filename].update_interval_id = setInterval(function () {
+		fs.readFile(filename, function (err, buf) {
+			if (err) {
+				del(filename);
+				return;
+			}
+			// We have to make sure we handle a delete in middle of 
+			// an update.
+			if (self.cache[filename]) {
+				self.cache[filename].modified = Date.now();
+				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
+					self.cache[filename].buf = buf.toString();
+				} else {
+					self.cache[filename].buf = buf;
+				}
+				self.cache[filename].size = buf.length; 
 			}
 		});
 	}, interval);
 };
 
 
-var onUpdate = function (filename, interval) {
-	self.cache[filename].update_interval_id = setInterval(function () {
-		set(filename, self.cache[filename].options);
-	}, interval);
-};
-
-
 var onPrune = function (filename, timeout) {
-	var timeout_id = self.cache[filename].expire_timeout_id;
-	self.cache[filename].expire_timeout_id = setTimeout(function () {
+	setTimeout(function () {
 		del(filename);
-		clearTimeout(timeout_id);
 	}, timeout);
 };
 
@@ -98,32 +121,35 @@ var setupItem = function (filename, options, buf) {
 		});
 	}
 
+	self.cache[filename].modified = Date.now();
 	if (self.cache[filename].mime_type.toLowerCase().indexOf('text/') === 0) {
 		self.cache[filename].buf = buf.toString(); 
 	} else {
 		self.cache[filename].buf = buf;
 	}
-
+	self.cache[filename].size = buf.length;
 		
-	if (options.update_on_change === true) {
+	if (self.cache[filename].on_change == true) {
 		self.cache[filename].onChange = onChange;
-		self.cache[filename].onChange(filename, self.cache[filename].on_change_interval);
+		self.cache[filename].onChange(filename);
 	}
 
 	// Translate a relative time to 
 	// specific type
-	if (options.update_in !== false && Number(options.update_in) > 0) {
+	if (self.cache[filename].update_in !== false && 
+			Number(self.cache[filename].update_in) > 0) {
 		// Update options.update_in
 		self.cache[filename].onUpdate = onUpdate;
 		self.cache[filename].onUpdate(filename, options.update_in);
 	}
 
-	if (options.expire_in !== false && Number(options.expire_in) > 0) {
+	if (self.cache[filename].expire_in !== false && 
+			Number(self.cache[filename].expire_in) > 0) {
 		self.cache[filename].onPrune = onPrune;
 		// How do I actually trigger the expire
 		self.cache[filename].onPrune(filename, options.expire_in);
 	}
-	
+	self.cache[filename].modified = Date.now();
 	return self.cache[filename];
 };
 
@@ -142,6 +168,7 @@ var setSync = function (filename, options) {
 
 var set = function (filename, options, callback) {
 	fs.readFile(filename, function (err, buf) {
+		var item;
 		if (err && callback === undefined) {
 			throw err;
 		} else if (err) {
@@ -150,10 +177,9 @@ var set = function (filename, options, callback) {
 				callback(err);
 			}
 		}
+		item = setupItem(filename, options, buf);
 		if (callback !== undefined) {
-			callback(null, setupItem(filename, options, buf));
-		} else {
-			setupItem(filename, options, buf);
+			callback(null, item);
 		}
 	});
 };
@@ -170,8 +196,8 @@ var get = function (filename) {
 var del = function (filename) {
 	if (self.cache[filename] !== undefined) {
 		// Cleanup timeout's and intervals
-		if (self.cache[filename].on_change_interval_id) {
-			clearInterval(self.cache[filename].on_change_interval_id);
+		if (self.cache[filename].on_change_watcher) {
+			self.cache[filename].on_change_watcher.close();
 		}
 		if (self.cache[filename].update_interval_id) {
 			clearInterval(self.cache[filename].update_interval_id);
@@ -184,6 +210,12 @@ var del = function (filename) {
 		delete self.cache[filename];
 	}
 	return (self.cache[filename] === undefined);
+};
+
+var shutdown = function () {
+	Object.keys(self.cache).forEach(function (filename) {
+		del(filename);
+	});
 };
 
 // Configuration setting
@@ -202,3 +234,4 @@ exports.setSync = setSync;
 exports.set = set;
 exports.get = get;
 exports.del = del;
+exports.shutdown = shutdown;
