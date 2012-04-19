@@ -9,7 +9,7 @@
 // Released under New the BSD License.
 // See: http://opensource.org/licenses/bsd-license.php
 //
-// revision: 0.0.1
+// revision: 0.0.2
 //
 var fs = require('fs');
 
@@ -18,7 +18,8 @@ var self = {
 		mime_type: 'application/octet-stream',
 		// Sets up a file Watch if true
 		on_change_in: false,
-		on_change_watcher: false,
+		on_change_interval:1000,
+		on_change_interval_id: false,
 		// Sets up a refresh using setInterval()
 		update_in: false,
 		update_interval_id: false,
@@ -30,17 +31,16 @@ var self = {
 };
 
 
-var onChange = function (filename) {
-	self.cache[filename].on_change_watcher = fs.watch(filename, 
-		{ persistent: true }, 
-	function (event, filename) {
+var update = function (filename) {
+	if (self.cache[filename]) {
 		fs.readFile(filename, function (err, buf) {
-			if (err) {
+			if (err || buf.length === 0) {
 				del(filename);
 				return;
 			}
+
 			// We have to make sure we handle a delete in middle of 
-			// an onChange().
+			// read for onChange() or onUpdate().
 			if (self.cache[filename]) {
 				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
 					self.cache[filename].buf = buf.toString(); 
@@ -51,7 +51,32 @@ var onChange = function (filename) {
 				self.cache[filename].size = buf.length; 
 			}
 		});
-	});
+	}
+};
+
+
+var onChange = function (filename) {
+	var prev = { mtime: Date.now(), ctime: Date.now() };
+
+	// fs.watch() isn't stable yet in NodeJS version 0.6.15
+	self.cache[filename].on_change_interval_id = setInterval(function () {
+		fs.stat(filename, function (err, stat) {
+			var mtime, ctime;
+			if (err || stat === null) {
+				del(filename);
+				return;
+			}
+			mtime = stat.mtime.getTime();
+			ctime = stat.ctime.getTime();
+			
+			if (prev.mtime !== mtime ||
+				prev.ctime !== ctime) {
+				update(filename);					
+			}
+			prev.mtime = mtime;
+			prev.ctime = ctime;
+		});
+	}, self.options.on_change_interval);
 };
 
 
@@ -78,7 +103,7 @@ var onUpdate = function (filename, interval) {
 };
 
 
-var onPrune = function (filename, timeout) {
+var onExpire = function (filename, timeout) {
 	setTimeout(function () {
 		del(filename);
 	}, timeout);
@@ -139,9 +164,9 @@ var setupItem = function (filename, options, buf) {
 
 	if (self.cache[filename].expire_in !== false && 
 			Number(self.cache[filename].expire_in) > 0) {
-		self.cache[filename].onPrune = onPrune;
+		self.cache[filename].onExpire = onExpire;
 		// How do I actually trigger the expire
-		self.cache[filename].onPrune(filename, options.expire_in);
+		self.cache[filename].onExpire(filename, options.expire_in);
 	}
 	self.cache[filename].modified = Date.now();
 	return self.cache[filename];
@@ -191,8 +216,8 @@ var get = function (filename) {
 var del = function (filename) {
 	if (self.cache[filename] !== undefined) {
 		// Cleanup timeout's and intervals
-		if (self.cache[filename].on_change_watcher) {
-			self.cache[filename].on_change_watcher.close();
+		if (self.cache[filename].on_change_interval_id) {
+			clearInterval(self.cache[filename].on_change_interval_id);
 		}
 		if (self.cache[filename].update_interval_id) {
 			clearInterval(self.cache[filename].update_interval_id);
@@ -221,7 +246,7 @@ exports.cache = self.cache;
 // Internal utility methods
 exports.onChange = onChange;
 exports.onUpdate = onUpdate;
-exports.onPrune = onPrune;
+exports.onExpire = onExpire;
 exports.setupItem = setupItem;
 
 // Primary public API

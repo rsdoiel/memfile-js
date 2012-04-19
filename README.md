@@ -1,6 +1,6 @@
 memfile.js
 ==========
-revision 0.0.1
+revision 0.0.2
 --------------
 
 # Overview
@@ -9,6 +9,13 @@ An in-memory file cache written for instructional purposes. If you were
 to extend this for production purposes then you would need to cap memory consumption at some point and attrition out items which were accessed rarely.
 You would also want logging integration. It might make more sense at that
 point to integrate with a database backend allowing for a secondary level of caching.
+
+
+# Problems
+
+The onChange() should really be using fs.watch() to detect a change in the
+file but currently that is listed as unstable in NodeJS version 0.6.15.
+
 
 # Examples
 

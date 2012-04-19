@@ -7,7 +7,7 @@
 // Released under New the BSD License.
 // See: http://opensource.org/licenses/bsd-license.php
 //
-// revision: 0.0.1
+// revision: 0.0.2
 //
 
 var assert = require('assert'),
@@ -38,8 +38,10 @@ Object.keys(expected).forEach(function (ky) {
 });
 
 
-memfile.setup({mime_type: "text/plain", on_change_in: 100});
-assert.equal(memfile.options.on_change_in, 100, "Should have updated setup" + util.inspect(memfile.options));
+memfile.setup({mime_type: "text/plain", on_change: true});
+assert.equal(memfile.options.on_change, true, "Should have updated setup" + util.inspect(memfile.options));
+memfile.setup({mime_type: "text/plain", on_change: false});
+assert.equal(memfile.options.on_change, false, "Should have updated setup" + util.inspect(memfile.options));
 
 assert.equal(Object.keys(memfile.cache).length, 0, "Should have zero objects in cache.");
 
@@ -82,13 +84,13 @@ memfile.set("README.md",{mime_type: "text/plain", expire_in: 50}, function (err,
 			"expected " + expected[ky] + "; found " + item[ky]);
 	});
 	
-	assert.equal(typeof memfile.cache["README.md"].onPrune, "function", "Should have onPrune() attached."); 
+	assert.equal(typeof memfile.cache["README.md"].onExpire, "function", "Should have onExpire() attached."); 
 
-	console.log("Checking onPrune(), expire_in");
+	console.log("Checking onExpire(), expire_in");
 	setTimeout(function () {
 		assert.strictEqual(memfile.get("README.md"), false, "README.md still in memory after 75 milliseconds. " + util.inspect(memfile.cache));
 		// Next check update_in ...
-		console.log("Checking onPrune(), expire_in, success");
+		console.log("Checking onExpire(), expire_in, success");
 	}, 75);
 	console.log("Checking set(), success");
 });
@@ -121,7 +123,7 @@ memfile.set("test-data/test-1.txt", {mime_type: "text/plain", update_in: 10}, fu
 			modified = memfile.cache["test-data/test-1.txt"].modified;
 		}, 20);
 
-		console.log("Checking stat for 2nd access");
+		console.log("Checking stat 2nd access");
 		setTimeout(function () {
 			assert.ok(memfile.cache["test-data/test-1.txt"].modified > modified, "(2nd) Should have been modified since " + modified + "," + memfile.cache["test-data/test-1.txt"].modified);
 			console.log("Checking stat 2nd access, success");
@@ -135,13 +137,13 @@ memfile.set("test-data/test-1.txt", {mime_type: "text/plain", update_in: 10}, fu
 });
 
 
-console.log("Setting up for onChange(), on_change_in");
-memfile.set("test-data/test-2.txt", {mime_type: "text/plain", on_change_in: 25}, function (err, item) {
+console.log("Setting up for onChange(), on_change");
+memfile.set("test-data/test-2.txt", {mime_type: "text/plain", on_change: true}, function (err, item) {
 	assert.ok(! err, "Shouldn't get an error updating test-data/test-2.txt: " + err);
 	results = item.modified;
 });
 
-console.log("Checking onChange(), on_change_in");
+console.log("Checking onChange(), on_change");
 src += "\nSecond Line";
 console.log("\tchanging test-data/test-2.txt: ", Date.now());
 fs.writeFileSync("test-data/test-2.txt", src);
@@ -152,17 +154,29 @@ setTimeout(function () {
 
 	console.log("\tchecking for change in cache: ", Date.now());		
 	assert.strictEqual(item.buf, src, "item != src: " + item.buf + " <--> " + src);
-	console.log("Checking onChange(), on_change_in, success");
+	console.log("Checking onChange(), on_change, success");
 }, 1000);
 
 
+console.log("Checking onChange(), file removal");
+fs.unlinkSync("test-data/test-2.txt");
+setTimeout(function () {
+	var item = memfile.get("test-data/test-2.txt");
+	assert.strictEqual(item, false, "Shouldn't have an entry for test-data/test-2.txt");
+	console.log("Checking onChange(), file removal, success");
+}, 2000);
+
+console.log("Setting up final tests...");
 setTimeout(function () {
 	var ky_list = Object.keys(memfile.cache);
-	//console.log("DEBUG", memfile);
 
+	assert.equal(ky_list.length, 1, "Should have one item in cache when we're ready to shutdown.");
 	memfile.close();
+	ky_list = Object.keys(memfile.cache);
+
+	assert.equal(ky_list.length, 0, "Should have zero items in cache when we're ready to shutdown.");
 	console.log("Success!");
-}, 15000);
+}, 5000);
 
 
 
