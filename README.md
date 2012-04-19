@@ -5,10 +5,14 @@ revision 0.0.1
 
 # Overview
 
-An in-memory file cache written for instructional purposes.
-
+An in-memory file cache written for instructional purposes. If you were
+to extend this for production purposes then you would need to cap memory consumption at some point and attrition out items which were accessed rarely.
+You would also want logging integration. It might make more sense at that
+point to integrate with a database backend allowing for a secondary level of caching.
 
 # Examples
+
+Below is an example of using memfile with a simplistic web server.
 
 	var http = require("http"),
 		path = require("path"),

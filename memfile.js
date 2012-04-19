@@ -34,30 +34,23 @@ var onChange = function (filename) {
 	self.cache[filename].on_change_watcher = fs.watch(filename, 
 		{ persistent: true }, 
 	function (event, filename) {
-		console.log("DEBUG watcher", event, filename);
-		/*
 		fs.readFile(filename, function (err, buf) {
 			if (err) {
-				console.error("DEBUG onChange(), err", err);
 				del(filename);
 				return;
 			}
 			// We have to make sure we handle a delete in middle of 
 			// an onChange().
 			if (self.cache[filename]) {
-				console.log("DEBUG onChange(), updating content:", self.cache[filename]);
-				self.cache[filename].modified = Date.now();
 				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
 					self.cache[filename].buf = buf.toString(); 
 				} else {
 					self.cache[filename].buf = buf;
 				}
+				self.cache[filename].modified = Date.now();
 				self.cache[filename].size = buf.length; 
-				size = buf.length;
-				last_checked = Date.now();
 			}
 		});
-		*/
 	});
 };
 
@@ -72,12 +65,12 @@ var onUpdate = function (filename, interval) {
 			// We have to make sure we handle a delete in middle of 
 			// an update.
 			if (self.cache[filename]) {
-				self.cache[filename].modified = Date.now();
 				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
 					self.cache[filename].buf = buf.toString();
 				} else {
 					self.cache[filename].buf = buf;
 				}
+				self.cache[filename].modified = Date.now();
 				self.cache[filename].size = buf.length; 
 			}
 		});
@@ -121,12 +114,13 @@ var setupItem = function (filename, options, buf) {
 		});
 	}
 
-	self.cache[filename].modified = Date.now();
 	if (self.cache[filename].mime_type.toLowerCase().indexOf('text/') === 0) {
 		self.cache[filename].buf = buf.toString(); 
 	} else {
 		self.cache[filename].buf = buf;
 	}
+	self.cache[filename].created = Date.now();
+	self.cache[filename].modified = Date.now();
 	self.cache[filename].size = buf.length;
 		
 	if (self.cache[filename].on_change == true) {
@@ -189,6 +183,7 @@ var get = function (filename) {
 	if (self.cache[filename] === undefined) {
 		return false;
 	}
+	self.cache[filename].accessed = Date.now();
 	return self.cache[filename];
 };
 
