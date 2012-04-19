@@ -15,25 +15,32 @@ An in-memory file cache written for instructional purposes.
 		memfile = require("memfile"),
 		mimetype = require("mimetype");
 	
-	var filelist = [ "htdocs/favicon.ico", "htdocs/clock.html", "htdocs/js/clock.js", "htdocs/clock.css" ];
+	var file_list = [ 
+		"htdocs/favicon.png", 
+		"htdocs/clock.html", 
+		"htdocs/js/clock.js", 
+		"htdocs/clock.css"
+	];
 	
-	filelist.forEach(function (filename) {
-		// Remember a file and mime type, update if it changes
-		// on disc, forget it after an five minutes (300000 milliseconds)
+	file_list.forEach(function (filename) {
+		// Remember the files, mime type, and update if it changes
 		memfile.setSync(filename, {
 			mime_type: mimetype.lookup(filename), 
-			update_on_change: true,
-			expire_in: 300000});
+			on_change: true});
 	});
 	
 	// Create the web server serving the clock web site
 	console.log("Starting web server)
 	http.createServer(function (req, res) {
 		var file;
-	
+
+		// Handle special case urls	
 		if (req.url === "/" || req.url === "/index.html") {
 			req.url = "/clock.html";
+		} else if (req.url === "/favicon.ico") {
+			req.url = "/favicon.png";
 		}
+
 		file = memfile.get(path.join("htdocs", req.url));
 		if (file === true) {
 			res.writeHead(200, {"Content-Type": file.mime_type)});
