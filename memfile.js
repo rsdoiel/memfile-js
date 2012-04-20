@@ -9,12 +9,15 @@
 // Released under New the BSD License.
 // See: http://opensource.org/licenses/bsd-license.php
 //
-// revision: 0.0.2
+// revision: 0.0.3
 //
-var fs = require('fs');
+var fs = require('fs'),
+	util = require('util'),
+	events = require('events');
 
-var self = {
-	options: {
+var event = new events.EventEmitter();
+
+var options = {
 		mime_type: 'application/octet-stream',
 		// Sets up a file Watch if true
 		on_change_in: false,
@@ -26,44 +29,50 @@ var self = {
 		// Sets up a prune using setTimeout()
 		expire_in: false,
 		expire_timeout_id: false
-	},
-	cache: {},
-};
+	}, cache = {};
 
 
 var update = function (filename) {
-	if (self.cache[filename]) {
+	if (cache[filename]) {
 		fs.readFile(filename, function (err, buf) {
 			if (err || buf.length === 0) {
-				del(filename);
+				if (cache[filename] !== undefined) {
+					event.emit("update", { error: true, error_msg: err,
+						 filename: filename, time: Date.now() });
+					del(filename, false);
+				}
 				return;
 			}
 
 			// We have to make sure we handle a delete in middle of 
 			// read for onChange() or onUpdate().
-			if (self.cache[filename]) {
-				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
-					self.cache[filename].buf = buf.toString(); 
+			if (cache[filename]) {
+				if (cache[filename].mime_type.indexOf('text/') === 0) {
+					cache[filename].buf = buf.toString(); 
 				} else {
-					self.cache[filename].buf = buf;
+					cache[filename].buf = buf;
 				}
-				self.cache[filename].modified = Date.now();
-				self.cache[filename].size = buf.length; 
+				cache[filename].modified = Date.now();
+				cache[filename].size = buf.length; 
+				// Emit an update event
+				event.emit("update", {status: "OK", filename: filename, time: cache[filename].modified, size: cache[filename].size});
 			}
 		});
 	}
 };
 
-
+// Watch for time change on disc, then update
 var onChange = function (filename) {
 	var prev = { mtime: Date.now(), ctime: Date.now() };
 
-	// fs.watch() isn't stable yet in NodeJS version 0.6.15
-	self.cache[filename].on_change_interval_id = setInterval(function () {
+	// fs.watch() isn't stable yet as of NodeJS version 0.6.15
+	// Fake it by polling the file system.
+	cache[filename].on_change_interval_id = setInterval(function () {
 		fs.stat(filename, function (err, stat) {
 			var mtime, ctime;
 			if (err || stat === null) {
-				del(filename);
+				// Since we have an error, assume file is removed.
+				del(filename, true);
 				return;
 			}
 			mtime = stat.mtime.getTime();
@@ -76,36 +85,43 @@ var onChange = function (filename) {
 			prev.mtime = mtime;
 			prev.ctime = ctime;
 		});
-	}, self.options.on_change_interval);
+	}, options.on_change_interval);
 };
 
-
+// Read from disc every interval
 var onUpdate = function (filename, interval) {
-	self.cache[filename].update_interval_id = setInterval(function () {
+	cache[filename].update_interval_id = setInterval(function () {
 		fs.readFile(filename, function (err, buf) {
 			if (err) {
-				del(filename);
+				// Emit a delete event
+				event.emit("update", {error: true, error_msg: err,
+					filename: filename, time: Date.now() });
+				// We don't delete it as we may want to hold onto our
+				// last valid copy.
 				return;
 			}
 			// We have to make sure we handle a delete in middle of 
 			// an update.
-			if (self.cache[filename]) {
-				if (self.cache[filename].mime_type.indexOf('text/') === 0) {
-					self.cache[filename].buf = buf.toString();
+			if (cache[filename]) {
+				if (cache[filename].mime_type.indexOf('text/') === 0) {
+					cache[filename].buf = buf.toString();
 				} else {
-					self.cache[filename].buf = buf;
+					cache[filename].buf = buf;
 				}
-				self.cache[filename].modified = Date.now();
-				self.cache[filename].size = buf.length; 
+				cache[filename].modified = Date.now();
+				cache[filename].size = buf.length; 
+				// Emit an update event
+				event.emit("update", {status: "OK", filename: filename, time: cache[filename].modified, size: cache[filename].size});
 			}
 		});
 	}, interval);
 };
 
-
 var onExpire = function (filename, timeout) {
 	setTimeout(function () {
-		del(filename);
+		// Emit an Expired event
+		event.emit("expire", { status: "OK", filename: filename, time: Date.now()});
+		del(filename, false);
 	}, timeout);
 };
 
@@ -116,60 +132,61 @@ var setup = function (defaults) {
 	if (defaults !== undefined) {
 		ky_list = Object.keys(defaults);
 		for (i = 0; i < ky_list.length; i += 1) {
-			self.options[ky_list[i]] = defaults[ky_list[i]];
+			options[ky_list[i]] = defaults[ky_list[i]];
 		}
 	}
+	
 };
 
 
-var setupItem = function (filename, options, buf) {
+var setupItem = function (filename, custom_options, buf) {
 	// Delete any existing copy of item
-	del(filename);
+	del(filename, false);
 
-	self.cache[filename] = {};
+	cache[filename] = {};
 	// Recreate based on the defaults
-	Object.keys(self.options).forEach(function (ky) {
-		self.cache[filename][ky] = self.options[ky];
+	Object.keys(options).forEach(function (ky) {
+		cache[filename][ky] = options[ky];
 	});
 
 	// Merge new options
-	if (options !== undefined) {
-		Object.keys(options).forEach(function (ky) {
-			self.cache[filename][ky] = options[ky];
+	if (custom_options !== undefined) {
+		Object.keys(custom_options).forEach(function (ky) {
+			cache[filename][ky] = custom_options[ky];
 		});
 	}
 
-	if (self.cache[filename].mime_type.toLowerCase().indexOf('text/') === 0) {
-		self.cache[filename].buf = buf.toString(); 
+	if (cache[filename].mime_type.indexOf('text/') === 0) {
+		cache[filename].buf = buf.toString(); 
 	} else {
-		self.cache[filename].buf = buf;
+		cache[filename].buf = buf;
 	}
-	self.cache[filename].created = Date.now();
-	self.cache[filename].modified = Date.now();
-	self.cache[filename].size = buf.length;
+	cache[filename].created = Date.now();
+	cache[filename].modified = Date.now();
+	cache[filename].size = buf.length;
 		
-	if (self.cache[filename].on_change == true) {
-		self.cache[filename].onChange = onChange;
-		self.cache[filename].onChange(filename);
+	if (cache[filename].on_change == true) {
+		cache[filename].onChange = onChange;
+		cache[filename].onChange(filename);
 	}
 
 	// Translate a relative time to 
 	// specific type
-	if (self.cache[filename].update_in !== false && 
-			Number(self.cache[filename].update_in) > 0) {
+	if (cache[filename].update_in !== false && 
+			Number(cache[filename].update_in) > 0) {
 		// Update options.update_in
-		self.cache[filename].onUpdate = onUpdate;
-		self.cache[filename].onUpdate(filename, options.update_in);
+		cache[filename].onUpdate = onUpdate;
+		cache[filename].onUpdate(filename, cache[filename].update_in);
 	}
 
-	if (self.cache[filename].expire_in !== false && 
-			Number(self.cache[filename].expire_in) > 0) {
-		self.cache[filename].onExpire = onExpire;
+	if (cache[filename].expire_in !== false && 
+			Number(cache[filename].expire_in) > 0) {
+		cache[filename].onExpire = onExpire;
 		// How do I actually trigger the expire
-		self.cache[filename].onExpire(filename, options.expire_in);
+		cache[filename].onExpire(filename, cache[filename].expire_in);
 	}
-	self.cache[filename].modified = Date.now();
-	return self.cache[filename];
+	cache[filename].modified = Date.now();
+	return cache[filename];
 };
 
 
@@ -188,15 +205,22 @@ var setSync = function (filename, options) {
 var set = function (filename, options, callback) {
 	fs.readFile(filename, function (err, buf) {
 		var item;
-		if (err && callback === undefined) {
-			throw err;
-		} else if (err) {
-			if (self.cache[filename] !== undefined) {
-				del(filename);
+		if (err) {
+			if (cache[filename] !== undefined) {
+				// this is false because this is gc of partial create.
+				del(filename, false);
+			}
+			// Emit a create error
+			event.emit("create", { error: true, error_msg:err, 
+				filename: filename });
+			if (callback !== undefined) {
 				callback(err);
 			}
+			return;
 		}
 		item = setupItem(filename, options, buf);
+		// Emit a create event
+		event.emit("create", { status: "OK", filename: filename });
 		if (callback !== undefined) {
 			callback(null, item);
 		}
@@ -205,43 +229,58 @@ var set = function (filename, options, callback) {
 
 
 var get = function (filename) {
-	if (self.cache[filename] === undefined) {
+	if (cache[filename] === undefined) {
 		return false;
 	}
-	self.cache[filename].accessed = Date.now();
-	return self.cache[filename];
+	cache[filename].accessed = Date.now();
+	// Emit an accessed event
+	event.emit("accessed", { status: "OK", filename: filename, time: cache[filename].accessed, size: cache[filename].size });
+	return cache[filename];
 };
 
-
-var del = function (filename) {
-	if (self.cache[filename] !== undefined) {
+var del = function (filename, emit_event) {
+	if (emit_event === undefined) {
+		emit_event = true;
+	}
+	if (cache[filename] !== undefined) {
 		// Cleanup timeout's and intervals
-		if (self.cache[filename].on_change_interval_id) {
-			clearInterval(self.cache[filename].on_change_interval_id);
+		if (cache[filename].on_change_interval_id) {
+			clearInterval(cache[filename].on_change_interval_id);
 		}
-		if (self.cache[filename].update_interval_id) {
-			clearInterval(self.cache[filename].update_interval_id);
+		if (cache[filename].update_interval_id) {
+			clearInterval(cache[filename].update_interval_id);
 		}
-		if (self.cache[filename].expire_timeout_id) {
-			clearTimeout(self.cache[filename].expire_interval_id);
+		if (cache[filename].expire_timeout_id) {
+			clearTimeout(cache[filename].expire_interval_id);
 		}
 		// Remove cache entry
-		delete self.cache[filename].buf;
-		delete self.cache[filename];
+		delete cache[filename].buf;
+		delete cache[filename];
+		if (emit_event === true) {
+			// Emit a delete event
+			event.emit("delete", { status: "OK", 
+				filename: filename, time: Date.now() });
+		}
 	}
-	return (self.cache[filename] === undefined);
+	return (cache[filename] === undefined);
 };
 
 var close = function () {
-	Object.keys(self.cache).forEach(function (filename) {
-		del(filename);
+	Object.keys(cache).forEach(function (filename) {
+		// We're not emitting delete events on closing, just close event.
+		del(filename, false);
 	});
+	// Emit a exit event.
+	event.emit("close", { status: "OK" });
 };
+
+// Export the event methods
+exports.event = event;
 
 // Configuration setting
 exports.setup = setup;
-exports.options = self.options;
-exports.cache = self.cache;
+exports.options = options;
+exports.cache = cache;
 
 // Internal utility methods
 exports.onChange = onChange;

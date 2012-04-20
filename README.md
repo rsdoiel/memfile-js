@@ -1,6 +1,6 @@
 memfile.js
 ==========
-revision 0.0.2
+revision 0.0.3
 --------------
 
 # Overview
@@ -16,6 +16,7 @@ point to integrate with a database backend allowing for a secondary level of cac
 The onChange() should really be using fs.watch() to detect a change in the
 file but currently that is listed as unstable in NodeJS version 0.6.15.
 
+I really should inherit form events rather than attach it to the module.
 
 # Examples
 
@@ -33,6 +34,7 @@ Below is an example of using memfile with a simplistic web server.
 		"htdocs/clock.css"
 	];
 	
+	// We're reading in a blocking manner here using setSync().
 	file_list.forEach(function (filename) {
 		// Remember the files, mime type, and update if it changes
 		memfile.setSync(filename, {

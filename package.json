@@ -1,6 +1,6 @@
 {
 	"name" : "memfile",
-	"version" : "0.0.2",
+	"version" : "0.0.3",
 	"description" : "A simplistic in-memory file cache. Not suitable of a huge number of files. It doesn't feature logging which a production implementation requirement.",
 	"main" : "./memfile.js",
 	"repository" : {
