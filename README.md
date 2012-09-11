@@ -1,7 +1,6 @@
+[![build status](https://secure.travis-ci.org/rsdoiel/memfile.png)](http://travis-ci.org/rsdoiel/memfile)
 memfile.js
 ==========
-revision 0.0.3
---------------
 
 # Overview
 
